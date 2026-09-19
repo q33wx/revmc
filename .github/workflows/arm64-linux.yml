@@ -1,0 +1,44 @@
+# Standalone probe: run revmc's own test suite on aarch64 Linux.
+# Upstream CI covers ubuntu-x64 and macos-arm64 only; this is the
+# platform ARM node operators actually run (Graviton, Ampere).
+name: arm64-linux
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  ALL_BACKENDS: "llvm"
+
+jobs:
+  test-arm64-linux:
+    name: test aarch64-linux ${{ matrix.profile }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ["dev", "release"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host facts
+        run: |
+          uname -m; getconf PAGESIZE
+          grep -m1 Features /proc/cpuinfo || lscpu
+
+      - name: Install LLVM
+        run: .github/scripts/install_llvm.sh ubuntu
+
+      - name: llvm-config
+        run: llvm-config --version --bindir --libdir
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - uses: taiki-e/install-action@nextest
+
+      - name: test
+        run: cargo nextest run --workspace --cargo-profile ${{ matrix.profile }} --features ${{ env.ALL_BACKENDS }}
