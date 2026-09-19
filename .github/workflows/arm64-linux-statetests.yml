@@ -1,0 +1,52 @@
+# EVM state tests on aarch64 Linux.
+#
+# Upstream `state-tests` runs modes [interpreter, jit, aot] on ubuntu-x64,
+# and [interpreter, jit] on macos-arm64 — `aot` is excluded there. So AOT
+# compilation, which emits object files and dlopen's them, has never been
+# exercised on any ARM target. This runs all three on aarch64 Linux.
+name: arm64-linux-statetests
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  state-tests-arm64:
+    name: state-tests aarch64-linux (${{ matrix.mode }})
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [interpreter, jit, aot]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host facts
+        run: |
+          uname -m; getconf PAGESIZE
+          grep -m1 Features /proc/cpuinfo || lscpu
+
+      - name: Checkout ethereum/tests
+        run: git submodule update --init --checkout --depth 1 tests/ethereum-tests
+
+      - name: Download test fixtures
+        run: ./scripts/setup-test-fixtures.sh
+
+      - name: Install LLVM
+        run: .github/scripts/install_llvm.sh ubuntu
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - uses: taiki-e/install-action@nextest
+
+      - name: Run state tests
+        run: |
+          cargo nextest run -p revmc --features llvm \
+            --no-capture --no-fail-fast \
+            -E 'test(statetest::${{ matrix.mode }})'
